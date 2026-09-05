@@ -1,0 +1,6 @@
+{
+  "name": "متجر بقشة سعادة الإلكتروني",
+  "description": "متجر بقشة سعادة الإلكتروني للهدايا والكماليات - تصفح المنتجات، اختيار المقاسات، كود الخصم، وسلة المشتريات.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
