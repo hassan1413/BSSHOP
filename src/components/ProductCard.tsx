@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Gift } from 'lucide-react';
 import { Product, ProductSizeVariant } from '../types';
 
 interface ProductCardProps {
@@ -43,8 +43,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               loading="lazy"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-slate-300 font-bold text-xs">
-              لا توجد صورة
+            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-b from-amber-500/5 to-slate-100/90 p-4 text-center select-none group-hover:from-amber-500/10 transition-colors">
+              <div className="w-10 h-10 rounded-xl bg-white shadow-xs border border-amber-200/40 flex items-center justify-center text-amber-600 mb-1.5 group-hover:scale-110 transition-transform">
+                <Gift className="w-5 h-5" />
+              </div>
+              <span className="text-[11px] font-bold text-slate-600 line-clamp-1">
+                {product.category}
+              </span>
+              <span className="text-[9px] text-amber-700 font-medium">بقشة سعادة</span>
             </div>
           )}
 

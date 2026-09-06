@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShoppingBag, X, Plus, Minus, ArrowRight, Tag, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { ShoppingBag, X, Plus, Minus, ArrowRight, Tag, AlertCircle, CheckCircle2, Gift } from 'lucide-react';
 import { CartItem, PromoCode } from '../types';
 
 interface CartDrawerProps {
@@ -103,8 +103,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                       className="w-full h-full object-cover"
                     />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-[10px] text-slate-400">
-                      صورة
+                    <div className="w-full h-full flex items-center justify-center bg-amber-50 text-amber-600">
+                      <Gift className="w-6 h-6" />
                     </div>
                   )}
                 </div>

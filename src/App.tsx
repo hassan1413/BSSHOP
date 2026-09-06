@@ -3,6 +3,7 @@ import confetti from 'canvas-confetti';
 import { Product, CartItem, PromoCode, ProductSizeVariant } from './types';
 import { 
   getStoreProducts, 
+  loadRealProductImages,
   getPromoCodes, 
   submitCustomerOrder, 
   subscribeToProductUpdates 
@@ -61,7 +62,7 @@ export default function App() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [completedOrderNumber, setCompletedOrderNumber] = useState<string | null>(null);
 
-  // تحميل البيانات الأولية
+  // تحميل البيانات الحقيقية من Supabase
   useEffect(() => {
     let isMounted = true;
 
@@ -73,6 +74,23 @@ export default function App() {
           setProducts(prods || []);
           setPromoCodes(codes || []);
         }
+
+        // جلب الصور الحقيقية المحفوظة في قاعدة البيانات تدريجياً لجميع المنتجات
+        loadRealProductImages((imageBatch) => {
+          if (!isMounted) return;
+          setProducts((prev) =>
+            prev.map((p) => {
+              const realImg = imageBatch[p.id];
+              return realImg ? { ...p, image_url: realImg, images: [realImg] } : p;
+            })
+          );
+          setCart((prev) =>
+            prev.map((item) => {
+              const realImg = imageBatch[item.productId];
+              return realImg && !item.image_url ? { ...item, image_url: realImg } : item;
+            })
+          );
+        });
       } catch (err) {
         console.warn('Error loading initial store data:', err);
       } finally {
@@ -90,6 +108,15 @@ export default function App() {
         const refreshed = await getStoreProducts();
         if (isMounted && refreshed && refreshed.length > 0) {
           setProducts(refreshed);
+          loadRealProductImages((imageBatch) => {
+            if (!isMounted) return;
+            setProducts((prev) =>
+              prev.map((p) => {
+                const realImg = imageBatch[p.id];
+                return realImg ? { ...p, image_url: realImg, images: [realImg] } : p;
+              })
+            );
+          });
         }
       } catch (err) {
         console.warn('Realtime refresh caught:', err);
