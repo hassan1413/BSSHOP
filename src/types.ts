@@ -4,6 +4,7 @@ export interface ProductSizeVariant {
   priceDelta?: number;
   stock?: number;
   sku?: string;
+  image_url?: string;
 }
 
 export interface Product {

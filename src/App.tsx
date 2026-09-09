@@ -63,42 +63,42 @@ export default function App() {
   const [completedOrderNumber, setCompletedOrderNumber] = useState<string | null>(null);
 
   // تحميل البيانات الحقيقية من Supabase
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [prods, codes] = await Promise.all([
+        getStoreProducts(),
+        getPromoCodes()
+      ]);
+
+      const validProds = prods || [];
+      setProducts(validProds);
+      setPromoCodes(codes || []);
+
+      // جلب الصور الحقيقية المحفوظة في قاعدة البيانات تدريجياً لجميع المنتجات
+      loadRealProductImages((imageBatch) => {
+        setProducts((prev) =>
+          prev.map((p) => {
+            const realData = imageBatch[p.id];
+            return realData ? { ...p, image_url: realData.image_url, images: realData.images } : p;
+          })
+        );
+        setCart((prev) =>
+          prev.map((item) => {
+            const realData = imageBatch[item.productId];
+            return realData && !item.image_url ? { ...item, image_url: realData.image_url } : item;
+          })
+        );
+      });
+    } catch (err) {
+      console.warn('Error loading store data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
-
-    async function loadData() {
-      try {
-        setLoading(true);
-        const [prods, codes] = await Promise.all([getStoreProducts(), getPromoCodes()]);
-        if (isMounted) {
-          setProducts(prods || []);
-          setPromoCodes(codes || []);
-        }
-
-        // جلب الصور الحقيقية المحفوظة في قاعدة البيانات تدريجياً لجميع المنتجات
-        loadRealProductImages((imageBatch) => {
-          if (!isMounted) return;
-          setProducts((prev) =>
-            prev.map((p) => {
-              const realImg = imageBatch[p.id];
-              return realImg ? { ...p, image_url: realImg, images: [realImg] } : p;
-            })
-          );
-          setCart((prev) =>
-            prev.map((item) => {
-              const realImg = imageBatch[item.productId];
-              return realImg && !item.image_url ? { ...item, image_url: realImg } : item;
-            })
-          );
-        });
-      } catch (err) {
-        console.warn('Error loading initial store data:', err);
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    }
     loadData();
 
     // مزامنة لحظية مع Supabase Realtime
@@ -112,8 +112,8 @@ export default function App() {
             if (!isMounted) return;
             setProducts((prev) =>
               prev.map((p) => {
-                const realImg = imageBatch[p.id];
-                return realImg ? { ...p, image_url: realImg, images: [realImg] } : p;
+                const realData = imageBatch[p.id];
+                return realData ? { ...p, image_url: realData.image_url, images: realData.images } : p;
               })
             );
           });
@@ -165,13 +165,13 @@ export default function App() {
         ...prev,
         {
           id: itemKey,
-          productId: product.id,
-          name: product.name,
+          productId: size ? size.id : product.id,
+          name: size ? `${product.name} (${size.name})` : product.name,
           category: product.category,
           price: finalPrice,
           originalPrice: finalPrice,
           quantity: 1,
-          image_url: product.image_url,
+          image_url: size?.image_url || product.image_url,
           selectedSize: size,
           availableStock: size?.stock ?? product.stock
         }
@@ -317,6 +317,17 @@ export default function App() {
               </div>
             ))}
           </div>
+        ) : products.length === 0 ? (
+          <div className="text-center py-16 bg-white rounded-3xl border border-dashed border-slate-200 p-8 max-w-lg mx-auto">
+            <p className="text-slate-700 font-bold text-base">تعذر تحميل المنتجات أو لم تكتمل استجابة الشبكة</p>
+            <p className="text-slate-400 text-xs mt-1">اضغط على الزر أدناه لإعادة تحديث وتحميل قائمة المنتجات من الخادم</p>
+            <button
+              onClick={() => loadData()}
+              className="mt-4 px-5 py-2.5 bg-amber-500 text-slate-950 rounded-xl text-xs font-bold hover:bg-amber-600 transition-all cursor-pointer shadow-xs active:scale-95"
+            >
+              إعادة محاولة التحميل
+            </button>
+          </div>
         ) : filteredProducts.length === 0 ? (
           <div className="text-center py-16 bg-white rounded-3xl border border-dashed border-slate-200 p-8">
             <p className="text-slate-600 font-bold text-base">لا توجد منتجات تطابق بحثك حالياً</p>
@@ -346,16 +357,18 @@ export default function App() {
       </main>
 
       {/* 5. نافذة اختيار المقاس والتفاصيل */}
-      <ProductModal
-        product={selectedProduct}
-        selectedSize={tempSelectedSize}
-        onSelectSize={setTempSelectedSize}
-        onClose={() => {
-          setSelectedProduct(null);
-          setTempSelectedSize(null);
-        }}
-        onConfirmAddToCart={addToCart}
-      />
+      {selectedProduct && (
+        <ProductModal
+          product={products.find((p) => p.id === selectedProduct.id) || selectedProduct}
+          selectedSize={tempSelectedSize}
+          onSelectSize={setTempSelectedSize}
+          onClose={() => {
+            setSelectedProduct(null);
+            setTempSelectedSize(null);
+          }}
+          onConfirmAddToCart={addToCart}
+        />
+      )}
 
       {/* 6. درج السلة الجانبي */}
       <CartDrawer
