@@ -5,6 +5,7 @@ export interface ProductSizeVariant {
   stock?: number;
   sku?: string;
   image_url?: string;
+  imageIndex?: number;
 }
 
 export interface Product {

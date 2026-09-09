@@ -56,13 +56,19 @@ export async function getStoreProducts(forceRefresh: boolean = false): Promise<P
                   priceDelta: 0
                 };
               }
+              const rawVariantStock = s.stock ?? s.quantity ?? s.qty;
+              const variantStock = (rawVariantStock !== undefined && rawVariantStock !== null && !isNaN(Number(rawVariantStock)))
+                ? Number(rawVariantStock)
+                : (typeof row.stock === 'number' ? row.stock : Number(row.stock || 0));
+
               return {
                 id: String(s.id || `sz-${idx}-${row.id}`),
                 name: String(s.name || s.label || s.title || `مقاس ${idx + 1}`).trim(),
                 priceDelta: Number(s.priceDelta || s.price_delta || s.price || 0),
-                stock: typeof s.stock === 'number' ? s.stock : undefined,
+                stock: variantStock,
                 sku: s.sku || undefined,
-                image_url: s.image_url || undefined
+                image_url: s.image_url || undefined,
+                imageIndex: typeof s.imageIndex === 'number' ? s.imageIndex : undefined
               };
             }).filter((s: ProductSizeVariant) => s.name.length > 0);
           } else if (typeof row.sizes === 'string' && row.sizes.trim().length > 0) {
@@ -77,13 +83,19 @@ export async function getStoreProducts(forceRefresh: boolean = false): Promise<P
                       priceDelta: 0
                     };
                   }
+                  const rawVariantStock = s.stock ?? s.quantity ?? s.qty;
+                  const variantStock = (rawVariantStock !== undefined && rawVariantStock !== null && !isNaN(Number(rawVariantStock)))
+                    ? Number(rawVariantStock)
+                    : (typeof row.stock === 'number' ? row.stock : Number(row.stock || 0));
+
                   return {
                     id: String(s.id || `sz-${idx}-${row.id}`),
                     name: String(s.name || s.label || s.title || `مقاس ${idx + 1}`).trim(),
                     priceDelta: Number(s.priceDelta || s.price_delta || s.price || 0),
-                    stock: typeof s.stock === 'number' ? s.stock : undefined,
+                    stock: variantStock,
                     sku: s.sku || undefined,
-                    image_url: s.image_url || undefined
+                    image_url: s.image_url || undefined,
+                    imageIndex: typeof s.imageIndex === 'number' ? s.imageIndex : undefined
                   };
                 }).filter((s: ProductSizeVariant) => s.name.length > 0);
               }
@@ -341,7 +353,8 @@ export async function submitCustomerOrder(orderPayload: {
     quantity: item.quantity,
     unitPrice: item.price,
     total: item.price * item.quantity,
-    selected_size: item.selectedSize?.name || null
+    selected_size: item.selectedSize?.name || null,
+    image_url: item.image_url || item.selectedSize?.image_url || null
   }));
 
   const invoiceRecord = {

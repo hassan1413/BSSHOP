@@ -1,29 +1,34 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { X, Check, ChevronRight, ChevronLeft, AlertTriangle, Images, Package } from 'lucide-react';
-import { Product, ProductSizeVariant } from '../types';
+import { X, Check, ChevronRight, ChevronLeft, AlertTriangle, Images, Package, Sparkles } from 'lucide-react';
+import { Product, ProductSizeVariant, CartItem } from '../types';
 import { fetchProductDetails } from '../supabaseClient';
+import { getVariantImageUrl, getAllProductImages } from '../utils/productUtils';
 
 interface ProductModalProps {
   product: Product | null;
   selectedSize: ProductSizeVariant | null;
+  cart?: CartItem[];
   onSelectSize: (size: ProductSizeVariant) => void;
   onClose: () => void;
-  onConfirmAddToCart: (product: Product, size?: ProductSizeVariant) => void;
+  onConfirmAddToCart: (product: Product, size?: ProductSizeVariant, customImageUrl?: string, quantity?: number) => void;
 }
 
 export const ProductModal: React.FC<ProductModalProps> = ({
   product,
   selectedSize,
+  cart,
   onSelectSize,
   onClose,
   onConfirmAddToCart
 }) => {
   const [modalImageIndex, setModalImageIndex] = useState(0);
+  const [hoveredSize, setHoveredSize] = useState<ProductSizeVariant | null>(null);
+  const [hoveredSizeIndex, setHoveredSizeIndex] = useState<number | null>(null);
   const [fetchedImages, setFetchedImages] = useState<string[]>([]);
   const [sizesImagesMap, setSizesImagesMap] = useState<Record<string, string>>({});
   const [loadingDetails, setLoadingDetails] = useState(false);
 
-  // جلب الصور الحقيقية وتفاصيل الأحجام من Supabase فور فتح النافذة
+  // جلب الصور الحقيقية وتفاصيل المقاسات من Supabase فور فتح النافذة
   useEffect(() => {
     let isCurrent = true;
     if (!product) return;
@@ -47,73 +52,92 @@ export const ProductModal: React.FC<ProductModalProps> = ({
     };
   }, [product?.id]);
 
-  // إعداد وتجميع قائمة صور المنتج دون تكرار
+  // إعداد وتجميع قائمة صور المنتج دون تكرار شاملة صور المقاسات
   const imagesList: string[] = useMemo(() => {
     if (!product) return [];
-    const list: string[] = [];
-
-    const addImg = (img?: string) => {
-      if (img && typeof img === 'string' && img.trim().length > 10 && !list.includes(img.trim())) {
-        list.push(img.trim());
+    const baseList = getAllProductImages(product, sizesImagesMap);
+    fetchedImages.forEach((img) => {
+      if (img && typeof img === 'string' && img.trim().length > 10 && !baseList.includes(img.trim())) {
+        baseList.push(img.trim());
       }
-    };
+    });
+    return baseList;
+  }, [product, sizesImagesMap, fetchedImages]);
 
-    addImg(product.image_url);
-
-    if (Array.isArray(product.images)) {
-      product.images.forEach(addImg);
-    }
-
-    if (Array.isArray(product.sizes)) {
-      product.sizes.forEach((s) => addImg(s.image_url));
-    }
-
-    fetchedImages.forEach(addImg);
-
-    return list;
-  }, [product?.image_url, product?.images, product?.sizes, fetchedImages]);
-
-  // إعادة ضبط مؤشر الصورة عند فتح نافذة لمنتج جديد
+  // التبديل الفوري لصورة المقاس المحدد عند فتح النافذة أو تغيير المقاس
   useEffect(() => {
-    setModalImageIndex(0);
-  }, [product?.id]);
-
-  // في حال اختيار مقاس يمتلك صورة خاصة به، يتم الانتقال إليها تلقائياً
-  useEffect(() => {
-    if (!selectedSize) return;
-    const targetImg = selectedSize.image_url || sizesImagesMap[selectedSize.id];
+    if (!selectedSize || !product) return;
+    const sizeIdx = product.sizes ? product.sizes.findIndex((s) => s.id === selectedSize.id || s.name === selectedSize.name) : -1;
+    const targetImg = getVariantImageUrl(selectedSize, sizeIdx, imagesList, product.image_url, sizesImagesMap);
     if (targetImg) {
       const idx = imagesList.indexOf(targetImg);
       if (idx !== -1) {
         setModalImageIndex(idx);
       }
     }
-  }, [selectedSize, sizesImagesMap, imagesList]);
+  }, [selectedSize, imagesList, sizesImagesMap, product]);
 
   if (!product) return null;
 
   const hasMultipleImages = imagesList.length > 1;
 
+  // الحجم الحالي الفعّال (إما معاينة بالوقوف أو المختار بالنقر)
+  const activeSize = hoveredSize || selectedSize;
+  const activeSizeIndex = hoveredSizeIndex ?? (selectedSize && product.sizes ? product.sizes.findIndex((s) => s.id === selectedSize.id || s.name === selectedSize.name) : 0);
+
+  // حساب صورة العرض الحالية بالمعرض
+  const activeGalleryImage: string | undefined = useMemo(() => {
+    if (hoveredSize) {
+      const hImg = getVariantImageUrl(hoveredSize, hoveredSizeIndex ?? 0, imagesList, product.image_url, sizesImagesMap);
+      if (hImg) return hImg;
+    }
+    if (imagesList[modalImageIndex]) {
+      return imagesList[modalImageIndex];
+    }
+    if (selectedSize) {
+      const sImg = getVariantImageUrl(selectedSize, activeSizeIndex, imagesList, product.image_url, sizesImagesMap);
+      if (sImg) return sImg;
+    }
+    return imagesList[0] || product.image_url;
+  }, [hoveredSize, hoveredSizeIndex, imagesList, modalImageIndex, selectedSize, activeSizeIndex, product.image_url, sizesImagesMap]);
+
   // التحقق من المخزون والحد الأدنى
-  const activeStock = typeof selectedSize?.stock === 'number' ? selectedSize.stock : product.stock;
+  const activeStock = typeof activeSize?.stock === 'number' ? activeSize.stock : product.stock;
   const minStockThreshold = (typeof product.min_stock_alert === 'number' && product.min_stock_alert > 0)
     ? product.min_stock_alert
     : 5;
   const isAtMinStock = activeStock > 0 && activeStock <= minStockThreshold;
   const isOutOfStock = activeStock <= 0;
 
-  const currentPrice = product.sell_price + (selectedSize?.priceDelta || 0);
+  // فحص الكمية الموجودة في السلة لهذا المنتج أو المقاس
+  const targetItemKey = activeSize ? `${product.id}-${activeSize.name}` : product.id;
+  const inCartItem = cart?.find((item) => item.id === targetItemKey);
+  const inCartQty = inCartItem?.quantity || 0;
+  const remainingStock = Math.max(0, activeStock - inCartQty);
+  const isMaxInCart = activeStock > 0 && inCartQty >= activeStock;
+
+  // كمية الإضافة المباشرة في النافذة
+  const [modalQty, setModalQty] = useState(1);
+
+  useEffect(() => {
+    setModalQty(1);
+  }, [activeSize?.id, activeSize?.name]);
+
+  const currentPrice = product.sell_price + (activeSize?.priceDelta || 0);
 
   const handlePrev = () => {
+    setHoveredSize(null);
     setModalImageIndex((prev) => (prev === 0 ? imagesList.length - 1 : prev - 1));
   };
 
   const handleNext = () => {
+    setHoveredSize(null);
     setModalImageIndex((prev) => (prev === imagesList.length - 1 ? 0 : prev + 1));
   };
 
   // اختيار صورة من المعرض وتحديث المقاس المقترن بها إن وجد
   const handleSelectImage = (index: number) => {
+    setHoveredSize(null);
     setModalImageIndex(index);
     const chosenUrl = imagesList[index];
     if (chosenUrl && product.sizes && product.sizes.length > 0) {
@@ -123,6 +147,30 @@ export const ProductModal: React.FC<ProductModalProps> = ({
       if (matchingVariant) {
         onSelectSize(matchingVariant);
       }
+    }
+  };
+
+  // اختيار المقاس وتحديث المعرض فوراً
+  const handleSelectSizeVariant = (size: ProductSizeVariant, idx: number) => {
+    onSelectSize(size);
+    const targetImg = getVariantImageUrl(size, idx, imagesList, product.image_url, sizesImagesMap);
+    if (targetImg) {
+      const foundIdx = imagesList.indexOf(targetImg);
+      if (foundIdx !== -1) {
+        setModalImageIndex(foundIdx);
+      }
+    }
+  };
+
+  // تأكيد الإضافة للسلة مع اعتماد صورة المقاس الفعلي والكمية بدقة
+  const handleConfirmAdd = () => {
+    if (!product || isOutOfStock || isMaxInCart || remainingStock <= 0) return;
+    const finalSize = selectedSize || (product.hasSizes && product.sizes && product.sizes.length > 0 ? product.sizes[0] : undefined);
+    const finalIdx = finalSize && product.sizes ? product.sizes.findIndex((s) => s.id === finalSize.id || s.name === finalSize.name) : 0;
+    const finalImage = getVariantImageUrl(finalSize, finalIdx, imagesList, product.image_url, sizesImagesMap) || activeGalleryImage;
+    const qtyToAdd = Math.min(modalQty, remainingStock);
+    if (qtyToAdd > 0) {
+      onConfirmAddToCart(product, finalSize, finalImage, qtyToAdd);
     }
   };
 
@@ -138,13 +186,13 @@ export const ProductModal: React.FC<ProductModalProps> = ({
         {/* رأس النافذة */}
         <div className="flex justify-between items-start gap-3">
           <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200/50">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-md">
                 {product.category}
               </span>
-              {product.hasSizes && (
-                <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">
-                  متوفر بعدة خيارات
+              {product.sku && (
+                <span className="text-[10px] text-slate-400 font-mono">
+                  كود: {product.sku}
                 </span>
               )}
             </div>
@@ -163,15 +211,23 @@ export const ProductModal: React.FC<ProductModalProps> = ({
           </button>
         </div>
 
-        {/* عرض الصور: صورة واحدة أو معرض متعدد مع التنقل المصغر */}
-        {imagesList.length > 0 ? (
+        {/* عرض الصور: صورة واحدة أو معرض متعدد مع التنقل المصغر وتبديل فوري للمقاس */}
+        {activeGalleryImage ? (
           <div className="space-y-2.5">
             <div className="relative w-full h-56 sm:h-64 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200/80 shadow-inner group">
               <img
-                src={imagesList[modalImageIndex] || imagesList[0]}
-                alt={`${product.name} - صورة ${modalImageIndex + 1}`}
+                src={activeGalleryImage}
+                alt={`${product.name} ${activeSize ? `- مقاس ${activeSize.name}` : ''}`}
                 className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-102"
               />
+
+              {/* شارة توضيحية فورية تظهر اسم المقاس وصورته بالمعرض */}
+              {activeSize && (
+                <div className="absolute top-3 left-3 bg-slate-950/90 backdrop-blur-md text-white text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1.5 z-10 shadow-md border border-amber-400/40 animate-in fade-in zoom-in-95 duration-150">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  <span>صورة المقاس المختار: {activeSize.name}</span>
+                </div>
+              )}
 
               {/* شارة عدد الصور الإجمالي المتوفرة في قاعدة البيانات */}
               <div className="absolute top-3 right-3 bg-slate-900/80 backdrop-blur-xs text-white text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 z-10 shadow-sm">
@@ -258,7 +314,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
           </div>
         )}
 
-        {/* عرض المقاسات المتوفرة من قاعدة البيانات بعددها الحقيقي */}
+        {/* عرض المقاسات المتوفرة من قاعدة البيانات بعددها الحقيقي ومصغراتها وصورها */}
         {product.hasSizes && product.sizes && product.sizes.length > 0 && (
           <div className="space-y-2 pt-1">
             <div className="flex items-center justify-between">
@@ -276,30 +332,50 @@ export const ProductModal: React.FC<ProductModalProps> = ({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-0.5">
-              {product.sizes.map((size) => {
+              {product.sizes.map((size, idx) => {
                 const isSelected = selectedSize?.id === size.id || selectedSize?.name === size.name;
+                const isHovered = hoveredSize?.id === size.id || hoveredSize?.name === size.name;
                 const sizePrice = product.sell_price + (size.priceDelta || 0);
                 const sizeStock = typeof size.stock === 'number' ? size.stock : product.stock;
-                const sizeImg = size.image_url || sizesImagesMap[size.id];
+                const sizeImg = getVariantImageUrl(size, idx, imagesList, product.image_url, sizesImagesMap);
 
                 return (
                   <button
-                    key={size.id || size.name}
+                    key={size.id || size.name || idx}
                     type="button"
-                    onClick={() => onSelectSize(size)}
-                    className={`p-3 rounded-2xl border text-xs font-bold transition-all text-right flex items-center justify-between gap-2 cursor-pointer ${
+                    onMouseEnter={() => {
+                      setHoveredSize(size);
+                      setHoveredSizeIndex(idx);
+                    }}
+                    onMouseLeave={() => {
+                      setHoveredSize(null);
+                      setHoveredSizeIndex(null);
+                    }}
+                    onClick={() => handleSelectSizeVariant(size, idx)}
+                    className={`p-2.5 sm:p-3 rounded-2xl border text-xs font-bold transition-all text-right flex items-center justify-between gap-2 cursor-pointer select-none ${
                       isSelected
-                        ? 'border-amber-500 bg-amber-50/70 text-amber-950 shadow-xs ring-2 ring-amber-400/40'
+                        ? 'border-amber-500 bg-amber-50/80 text-amber-950 shadow-xs ring-2 ring-amber-400/40'
+                        : isHovered
+                        ? 'border-amber-400 bg-slate-50 text-slate-900 shadow-2xs'
                         : 'border-slate-200 hover:bg-slate-50 text-slate-700 hover:border-slate-300'
                     }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      {sizeImg && (
+                      {/* صورة مصغرة للمقاس المحدد */}
+                      {sizeImg ? (
                         <img
                           src={sizeImg}
                           alt=""
-                          className="w-9 h-9 rounded-lg object-cover shrink-0 border border-slate-200"
+                          className={`w-10 h-10 rounded-xl object-cover shrink-0 border ${
+                            isSelected ? 'border-amber-500 ring-1 ring-amber-400/40' : 'border-slate-200'
+                          }`}
                         />
+                      ) : (
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
+                          isSelected ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-slate-100 text-slate-400 border-slate-200'
+                        }`}>
+                          <Package className="w-5 h-5" />
+                        </div>
                       )}
                       <div className="min-w-0">
                         <div className="font-bold flex items-center gap-1.5 truncate">
@@ -315,8 +391,8 @@ export const ProductModal: React.FC<ProductModalProps> = ({
                     </div>
 
                     {isSelected && (
-                      <span className="w-5 h-5 rounded-full bg-amber-500 text-white flex items-center justify-center shrink-0">
-                        <Check className="w-3.5 h-3.5" />
+                      <span className="w-6 h-6 rounded-full bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <Check className="w-4 h-4 stroke-[3]" />
                       </span>
                     )}
                   </button>
@@ -326,12 +402,56 @@ export const ProductModal: React.FC<ProductModalProps> = ({
           </div>
         )}
 
+        {/* اختيار الكمية والتحقق من المخزون */}
+        {activeStock > 0 && !isMaxInCart && remainingStock > 0 && (
+          <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-2xl border border-slate-200/80">
+            <div>
+              <span className="text-xs font-bold text-slate-800 block">الكمية المطلوبة:</span>
+              <span className="text-[10px] text-slate-500">
+                المتاح للإضافة: <strong className="text-amber-700">{remainingStock}</strong> من أصل {activeStock}
+                {inCartQty > 0 && ` (لديك ${inCartQty} بالسلة)`}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setModalQty((prev) => Math.max(1, prev - 1))}
+                disabled={modalQty <= 1}
+                className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed text-slate-700 cursor-pointer font-black text-sm"
+              >
+                -
+              </button>
+              <span className="font-black text-xs px-2 min-w-5 text-center text-slate-900">
+                {modalQty}
+              </span>
+              <button
+                type="button"
+                onClick={() => setModalQty((prev) => Math.min(remainingStock, prev + 1))}
+                disabled={modalQty >= remainingStock}
+                className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed text-slate-700 cursor-pointer font-black text-sm"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* تنبيه إذا وصل العميل للحد الأقصى في السلة */}
+        {isMaxInCart && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-900 font-bold flex items-center gap-2.5">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+            <span>لديك بالفعل الحد الأقصى المتوفر بالمخزون ({activeStock} قطع) في سلتك.</span>
+          </div>
+        )}
+
         {/* السعر وتأكيد الإضافة */}
         <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-4">
           <div>
             <span className="text-[11px] text-slate-400 block font-medium">السعر المطلوب:</span>
             <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-black text-slate-900">{currentPrice}</span>
+              <span className="text-2xl font-black text-slate-900">
+                {(currentPrice * (isMaxInCart ? 1 : modalQty)).toFixed(2)}
+              </span>
               <span className="text-xs font-bold text-slate-500">ر.س</span>
             </div>
           </div>
@@ -339,14 +459,19 @@ export const ProductModal: React.FC<ProductModalProps> = ({
           <button
             id="confirm-add-to-cart-btn"
             type="button"
-            disabled={isOutOfStock}
-            onClick={() => {
-              const finalSize = selectedSize || (product.hasSizes && product.sizes && product.sizes.length > 0 ? product.sizes[0] : undefined);
-              onConfirmAddToCart(product, finalSize);
-            }}
+            disabled={isOutOfStock || isMaxInCart || remainingStock <= 0}
+            onClick={handleConfirmAdd}
             className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-slate-950 font-black rounded-2xl text-sm transition-all shadow-md shadow-amber-500/20 active:scale-98 cursor-pointer disabled:cursor-not-allowed text-center"
           >
-            {isOutOfStock ? 'نفد من المخزون' : selectedSize ? `إضافة للسلة (${selectedSize.name})` : 'تأكيد الإضافة للسلة'}
+            {isOutOfStock
+              ? 'نفد من المخزون'
+              : isMaxInCart
+              ? `وصلت للحد الأقصى (${activeStock})`
+              : modalQty > 1
+              ? `إضافة ${modalQty} للسلة`
+              : selectedSize
+              ? `إضافة للسلة (${selectedSize.name})`
+              : 'تأكيد الإضافة للسلة'}
           </button>
         </div>
       </div>

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import confetti from 'canvas-confetti';
+import { AlertTriangle, X } from 'lucide-react';
 import { Product, CartItem, PromoCode, ProductSizeVariant } from './types';
 import { 
   getStoreProducts, 
@@ -14,7 +15,8 @@ import CategoryFilter from './components/CategoryFilter';
 import ProductCard from './components/ProductCard';
 import ProductModal from './components/ProductModal';
 import CartDrawer from './components/CartDrawer';
-import OrderSuccessModal from './components/OrderSuccessModal';
+import OrderSuccessModal, { CompletedOrderData } from './components/OrderSuccessModal';
+import { getVariantImageUrl } from './utils/productUtils';
 
 export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -61,6 +63,17 @@ export default function App() {
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [completedOrderNumber, setCompletedOrderNumber] = useState<string | null>(null);
+  const [completedOrderData, setCompletedOrderData] = useState<CompletedOrderData | null>(null);
+  const [stockToast, setStockToast] = useState<string | null>(null);
+
+  // إخفاء تنبيه المخزون تلقائياً بعد 3.5 ثوانٍ
+  useEffect(() => {
+    if (!stockToast) return;
+    const timer = setTimeout(() => {
+      setStockToast(null);
+    }, 3500);
+    return () => clearTimeout(timer);
+  }, [stockToast]);
 
   // تحميل البيانات الحقيقية من Supabase
   const loadData = async () => {
@@ -149,18 +162,51 @@ export default function App() {
     });
   }, [products, selectedCategory, search]);
 
-  // إضافة منتج إلى السلة
-  const addToCart = (product: Product, size?: ProductSizeVariant) => {
+  // إضافة منتج إلى السلة مع فحص دقيق للمخزون ومنع تجاوز الكمية المتوفرة
+  const addToCart = (
+    product: Product,
+    size?: ProductSizeVariant,
+    customImageUrl?: string,
+    addQuantity: number = 1
+  ) => {
     const itemKey = size ? `${product.id}-${size.name}` : product.id;
     const finalPrice = product.sell_price + (size?.priceDelta || 0);
+    const sizeIdx = size && product.sizes ? product.sizes.findIndex((s) => s.id === size.id || s.name === size.name) : 0;
+    const resolvedImage = customImageUrl || getVariantImageUrl(size, sizeIdx, product.images || [], product.image_url);
+    const maxStock = (typeof size?.stock === 'number' ? size.stock : product.stock) || 0;
+
+    if (maxStock <= 0) {
+      setStockToast(`عذراً، منتج "${product.name}${size ? ` (مقاس ${size.name})` : ''}" نفد حالياً من المخزون.`);
+      return;
+    }
 
     setCart((prev) => {
       const existing = prev.find((item) => item.id === itemKey);
       if (existing) {
+        const currentQty = existing.quantity;
+        if (currentQty >= maxStock) {
+          setStockToast(`عذراً، لقد وصلت إلى الحد الأقصى المتوفر في المخزون (${maxStock} ${product.unit || 'قطع'}) ولا يمكن إضافة المزيد.`);
+          return prev;
+        }
+
+        const allowedAdd = Math.min(addQuantity, maxStock - currentQty);
+        if (allowedAdd <= 0) {
+          setStockToast(`عذراً، أقصى كمية متوفرة في المخزون هي ${maxStock} ${product.unit || 'قطع'} فقط.`);
+          return prev;
+        }
+
+        if (currentQty + addQuantity > maxStock) {
+          setStockToast(`تمت إضافة ${allowedAdd} فقط لتصل إلى الحد الأقصى المتوفر بالمخزون (${maxStock} قطع).`);
+        }
+
         return prev.map((item) =>
-          item.id === itemKey ? { ...item, quantity: item.quantity + 1 } : item
+          item.id === itemKey
+            ? { ...item, quantity: currentQty + allowedAdd, availableStock: maxStock }
+            : item
         );
       }
+
+      const initialQty = Math.min(addQuantity, maxStock);
       return [
         ...prev,
         {
@@ -170,10 +216,10 @@ export default function App() {
           category: product.category,
           price: finalPrice,
           originalPrice: finalPrice,
-          quantity: 1,
-          image_url: size?.image_url || product.image_url,
+          quantity: initialQty,
+          image_url: resolvedImage,
           selectedSize: size,
-          availableStock: size?.stock ?? product.stock
+          availableStock: maxStock
         }
       ];
     });
@@ -182,9 +228,11 @@ export default function App() {
     setTempSelectedSize(null);
   };
 
-  const handleOpenProductModal = (product: Product) => {
+  const handleOpenProductModal = (product: Product, initialSize?: ProductSizeVariant) => {
     setSelectedProduct(product);
-    if (product.sizes && product.sizes.length > 0) {
+    if (initialSize) {
+      setTempSelectedSize(initialSize);
+    } else if (product.sizes && product.sizes.length > 0) {
       setTempSelectedSize(product.sizes[0]);
     } else {
       setTempSelectedSize(null);
@@ -196,7 +244,16 @@ export default function App() {
       prev
         .map((item) => {
           if (item.id === itemId) {
+            const maxStock = item.availableStock ?? 999;
+            if (delta > 0 && item.quantity >= maxStock) {
+              setStockToast(`عذراً، أقصى كمية متوفرة لهذا الصنف هي ${maxStock} قطع فقط.`);
+              return item;
+            }
             const newQty = item.quantity + delta;
+            if (newQty > maxStock) {
+              setStockToast(`عذراً، تم تعديل الكمية إلى الحد الأقصى المتوفر بالمخزون وهو ${maxStock} قطع.`);
+              return { ...item, quantity: maxStock };
+            }
             return newQty > 0 ? { ...item, quantity: newQty } : null;
           }
           return item;
@@ -252,17 +309,29 @@ export default function App() {
 
     setIsSubmitting(true);
     try {
+      const orderItemsSnapshot = [...cart];
       const res = await submitCustomerOrder({
         customerName,
         customerPhone,
         deliveryAddress,
         notes,
-        items: cart,
+        items: orderItemsSnapshot,
         totalAmount: finalTotal,
         discount: discountAmount
       });
 
       setCompletedOrderNumber(res.orderNumber);
+      setCompletedOrderData({
+        orderNumber: res.orderNumber,
+        customerName,
+        customerPhone,
+        deliveryAddress,
+        items: orderItemsSnapshot,
+        subtotal,
+        discount: discountAmount,
+        totalAmount: finalTotal,
+        date: new Date().toLocaleDateString('ar-SA')
+      });
       setCart([]);
       setIsCartOpen(false);
       
@@ -284,7 +353,25 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800 font-['Tajawal',sans-serif] selection:bg-amber-500 selection:text-slate-950">
+    <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800 font-['Tajawal',sans-serif] selection:bg-amber-500 selection:text-slate-950 relative">
+      {/* تنبيه قيود المخزون العائم */}
+      {stockToast && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-60 bg-slate-950/95 text-white px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-3 border border-amber-500/60 backdrop-blur-md animate-in fade-in slide-in-from-top-3 duration-200 max-w-md w-[92%]">
+          <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-400 shrink-0">
+            <AlertTriangle className="w-4 h-4" />
+          </div>
+          <p className="text-xs font-bold leading-relaxed flex-1 text-slate-100">{stockToast}</p>
+          <button
+            type="button"
+            onClick={() => setStockToast(null)}
+            className="p-1 hover:bg-white/10 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
+            title="إغلاق التنبيه"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* 1. الترويسة الرئيسية */}
       <Header
         cartCount={totalCartCount}
@@ -348,6 +435,7 @@ export default function App() {
               <ProductCard
                 key={product.id}
                 product={product}
+                cart={cart}
                 onAddToCart={addToCart}
                 onSelectForSizes={handleOpenProductModal}
               />
@@ -361,6 +449,7 @@ export default function App() {
         <ProductModal
           product={products.find((p) => p.id === selectedProduct.id) || selectedProduct}
           selectedSize={tempSelectedSize}
+          cart={cart}
           onSelectSize={setTempSelectedSize}
           onClose={() => {
             setSelectedProduct(null);
@@ -394,10 +483,14 @@ export default function App() {
         onCheckout={handleCheckout}
       />
 
-      {/* 7. نافذة نجاح الطلب */}
+      {/* 7. نافذة نجاح الطلب وإصدار الفاتورة */}
       <OrderSuccessModal
         orderNumber={completedOrderNumber}
-        onClose={() => setCompletedOrderNumber(null)}
+        orderData={completedOrderData}
+        onClose={() => {
+          setCompletedOrderNumber(null);
+          setCompletedOrderData(null);
+        }}
       />
 
       {/* 8. تذييل الصفحة */}
