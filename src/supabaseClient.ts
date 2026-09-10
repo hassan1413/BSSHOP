@@ -11,12 +11,18 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // جلب المنتجات الحقيقية كاملة من جدول products في Supabase (سريع وخفيف لتجنب انقطاع الشبكة)
 export async function getStoreProducts(forceRefresh: boolean = false): Promise<Product[]> {
-  const CACHE_KEY = 'bougshah_cached_products_v3';
+  const CACHE_KEY = 'bougshah_cached_products_v4';
 
-  // تنظيف أي بيانات مؤقتة قديمة تم حفظها سابقاً
+  // تنظيف أي بيانات مؤقتة قديمة تم حفظها سابقاً لضمان عدم بقاء المسميات الافتراضية
   try {
     localStorage.removeItem('bougshah_cached_products_v1');
     localStorage.removeItem('bougshah_cached_products_v2');
+    localStorage.removeItem('bougshah_cached_products_v3');
+    localStorage.removeItem('sb_products_cache_v1');
+    localStorage.removeItem('sb_products_cache_v2');
+    localStorage.removeItem('sb_products_cache_v3');
+    localStorage.removeItem('sb_products_cache_v4');
+    localStorage.removeItem('sb_products_cache_v5');
   } catch {
     // ignore
   }
@@ -42,62 +48,65 @@ export async function getStoreProducts(forceRefresh: boolean = false): Promise<P
       }
 
       if (data && data.length > 0) {
+        // دالة مساعدة لاستخراج بيانات المقاس الفعلية المسجلة في Supabase حصراً دون أي مسميات افتراضية
+        const parseRealSizeItem = (s: any, idx: number, row: any): ProductSizeVariant | null => {
+          if (!s) return null;
+          if (typeof s === 'string') {
+            const trimmed = s.trim();
+            if (!trimmed) return null;
+            return {
+              id: `sz-${idx}-${row.id}`,
+              name: trimmed,
+              priceDelta: 0,
+              stock: typeof row.stock === 'number' ? row.stock : Number(row.stock || 0)
+            };
+          }
+          if (typeof s === 'object') {
+            // أخذ الاسم الحقيقي المذكور في قاعدة البيانات (مثل: بيج، اخضر، اسود، بني فاتح...)
+            const rawName = s.size ?? s.name ?? s.label ?? s.title ?? s.color ?? s.variant ?? s.option ?? '';
+            const nameStr = String(rawName).trim();
+            // لا نضع أي مسمى افتراضي إطلاقاً في حال عدم توفر اسم حقيقي
+            if (!nameStr) {
+              return null;
+            }
+
+            const rawVariantStock = s.stock ?? s.quantity ?? s.qty ?? s.count;
+            const variantStock = (rawVariantStock !== undefined && rawVariantStock !== null && !isNaN(Number(rawVariantStock)))
+              ? Number(rawVariantStock)
+              : (typeof row.stock === 'number' ? row.stock : Number(row.stock || 0));
+
+            const rawImg = s.imageUrl || s.image_url || s.img || s.image;
+            const imgStr = typeof rawImg === 'string' ? rawImg.trim() : undefined;
+
+            return {
+              id: String(s.id || `sz-${idx}-${row.id}`),
+              name: nameStr,
+              priceDelta: Number(s.priceDelta || s.price_delta || 0),
+              stock: variantStock,
+              sku: s.sku || undefined,
+              image_url: imgStr && imgStr.length > 5 ? imgStr : undefined,
+              imageIndex: typeof s.imageIndex === 'number' ? s.imageIndex : undefined
+            };
+          }
+          return null;
+        };
+
         const rawProducts: Product[] = data.map((row: any) => {
           const category = (row.category || 'عام').trim();
 
           // استخراج المقاسات المسجلة فعلياً فقط في عمود sizes من جدول products في قاعدة البيانات
           let actualSizes: ProductSizeVariant[] = [];
           if (Array.isArray(row.sizes) && row.sizes.length > 0) {
-            actualSizes = row.sizes.map((s: any, idx: number) => {
-              if (typeof s === 'string') {
-                return {
-                  id: `sz-${idx}-${row.id}`,
-                  name: s.trim(),
-                  priceDelta: 0
-                };
-              }
-              const rawVariantStock = s.stock ?? s.quantity ?? s.qty;
-              const variantStock = (rawVariantStock !== undefined && rawVariantStock !== null && !isNaN(Number(rawVariantStock)))
-                ? Number(rawVariantStock)
-                : (typeof row.stock === 'number' ? row.stock : Number(row.stock || 0));
-
-              return {
-                id: String(s.id || `sz-${idx}-${row.id}`),
-                name: String(s.name || s.label || s.title || `مقاس ${idx + 1}`).trim(),
-                priceDelta: Number(s.priceDelta || s.price_delta || s.price || 0),
-                stock: variantStock,
-                sku: s.sku || undefined,
-                image_url: s.image_url || undefined,
-                imageIndex: typeof s.imageIndex === 'number' ? s.imageIndex : undefined
-              };
-            }).filter((s: ProductSizeVariant) => s.name.length > 0);
+            actualSizes = row.sizes
+              .map((s: any, idx: number) => parseRealSizeItem(s, idx, row))
+              .filter((item): item is ProductSizeVariant => item !== null && item.name.length > 0);
           } else if (typeof row.sizes === 'string' && row.sizes.trim().length > 0) {
             try {
               const parsed = JSON.parse(row.sizes);
               if (Array.isArray(parsed)) {
-                actualSizes = parsed.map((s: any, idx: number) => {
-                  if (typeof s === 'string') {
-                    return {
-                      id: `sz-${idx}-${row.id}`,
-                      name: s.trim(),
-                      priceDelta: 0
-                    };
-                  }
-                  const rawVariantStock = s.stock ?? s.quantity ?? s.qty;
-                  const variantStock = (rawVariantStock !== undefined && rawVariantStock !== null && !isNaN(Number(rawVariantStock)))
-                    ? Number(rawVariantStock)
-                    : (typeof row.stock === 'number' ? row.stock : Number(row.stock || 0));
-
-                  return {
-                    id: String(s.id || `sz-${idx}-${row.id}`),
-                    name: String(s.name || s.label || s.title || `مقاس ${idx + 1}`).trim(),
-                    priceDelta: Number(s.priceDelta || s.price_delta || s.price || 0),
-                    stock: variantStock,
-                    sku: s.sku || undefined,
-                    image_url: s.image_url || undefined,
-                    imageIndex: typeof s.imageIndex === 'number' ? s.imageIndex : undefined
-                  };
-                }).filter((s: ProductSizeVariant) => s.name.length > 0);
+                actualSizes = parsed
+                  .map((s: any, idx: number) => parseRealSizeItem(s, idx, row))
+                  .filter((item): item is ProductSizeVariant => item !== null && item.name.length > 0);
               }
             } catch {
               // ignore json parse error
@@ -119,7 +128,7 @@ export async function getStoreProducts(forceRefresh: boolean = false): Promise<P
             unit: row.unit || 'حبة',
             image_url: undefined,
             images: [],
-            description: `قسم ${category}`,
+            description: row.description || '',
             hasSizes: hasDbSizes,
             sizes: actualSizes,
             created_at: row.created_at

@@ -121,7 +121,7 @@ export const OrderSuccessModal: React.FC<OrderSuccessModalProps> = ({
                     <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       {item.selectedSize ? (
                         <span className="text-[10px] font-bold bg-amber-100/90 text-amber-900 px-2 py-0.5 rounded-md border border-amber-200/80">
-                          المقاس: {item.selectedSize.name}
+                          {item.selectedSize.name}
                         </span>
                       ) : (
                         <span className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">

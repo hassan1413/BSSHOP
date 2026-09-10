@@ -217,7 +217,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
             <div className="relative w-full h-56 sm:h-64 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200/80 shadow-inner group">
               <img
                 src={activeGalleryImage}
-                alt={`${product.name} ${activeSize ? `- مقاس ${activeSize.name}` : ''}`}
+                alt={`${product.name} ${activeSize ? `- ${activeSize.name}` : ''}`}
                 className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-102"
               />
 
@@ -225,7 +225,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
               {activeSize && (
                 <div className="absolute top-3 left-3 bg-slate-950/90 backdrop-blur-md text-white text-[11px] font-bold px-3 py-1 rounded-full flex items-center gap-1.5 z-10 shadow-md border border-amber-400/40 animate-in fade-in zoom-in-95 duration-150">
                   <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                  <span>صورة المقاس المختار: {activeSize.name}</span>
+                  <span>صورة: {activeSize.name}</span>
                 </div>
               )}
 
@@ -321,7 +321,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
               <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <span>المقاسات والخيارات المتوفرة</span>
                 <span className="text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded-full font-black text-[11px] border border-amber-200">
-                  {product.sizes.length} خيارات من قاعدة البيانات
+                  {product.sizes.length} خيارات متوفرة
                 </span>
               </label>
               {selectedSize && (

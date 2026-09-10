@@ -113,8 +113,8 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                     {item.name}
                   </h4>
                   {item.selectedSize && (
-                    <span className="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-medium mt-0.5 inline-block">
-                      المقاس: {item.selectedSize.name}
+                    <span className="text-[10px] text-amber-900 bg-amber-100/80 border border-amber-200 px-2 py-0.5 rounded-md font-bold mt-0.5 inline-block">
+                      {item.selectedSize.name}
                     </span>
                   )}
                   <div className="text-xs font-black text-slate-900 mt-1">

@@ -143,11 +143,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             </div>
           )}
 
-          {/* شارة توضيحية أعلى الصورة فور الوقوف أو الضغط على مقاس معين */}
+          {/* شارة توضيحية أعلى الصورة فور الوقوف أو الضغط على مقاس أو خيار معين */}
           {activeSize && (
             <div className="absolute top-2 right-2 z-20 bg-slate-950/90 backdrop-blur-md text-white text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 shadow-md border border-amber-400/40 animate-in fade-in zoom-in-95 duration-150">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-              <span>صورة مقاس: {activeSize.name}</span>
+              <span>{activeSize.name}</span>
               {hoveredSize && !selectedSize && (
                 <span className="text-amber-300 text-[9px]">(معاينة)</span>
               )}
@@ -221,10 +221,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             </div>
           )}
 
-          {/* وسم وجود مقاسات مسجلة بعددها من قاعدة البيانات إذا لم يتم معاينة مقاس */}
+          {/* وسم وجود خيارات/مقاسات مسجلة بعددها من قاعدة البيانات إذا لم يتم معاينة مقاس */}
           {hasDbSizes && !isOutOfStock && !activeSize && (
             <div className="absolute bottom-2 right-2 bg-slate-950/85 backdrop-blur-md text-white text-[10px] font-bold px-2 py-0.5 rounded-md z-10 border border-white/10 shadow-xs">
-              متوفر بـ {availableSizesCount} مقاسات
+              {availableSizesCount} خيارات
             </div>
           )}
         </div>
@@ -239,7 +239,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             {/* تفاصيل عدد المقاسات من قاعدة البيانات */}
             {hasDbSizes && (
               <span className="text-[10px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
-                {availableSizesCount} مقاسات
+                {availableSizesCount} خيارات
               </span>
             )}
           </div>
@@ -251,8 +251,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           {/* خيارات المقاسات التفاعلية: عند الوقوف أو الضغط تتغير الصورة فوراً مع صورة مصغرة وشارة توضيحية */}
           {hasDbSizes && product.sizes && (
             <div className="space-y-1 pt-1">
-              <span className="text-[10px] text-slate-400 font-medium block">
-                المقاسات (قف أو اضغط لتبديل الصورة):
+              <span className="text-[10px] text-slate-500 font-medium block">
+                الخيارات المتوفرة (قف أو اضغط لتبديل الصورة):
               </span>
               <div className="flex flex-wrap gap-1.5">
                 {product.sizes.map((s, idx) => {
@@ -275,8 +275,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                         setHoveredSizeIndex(null);
                       }}
                       onClick={(e) => handleSizeClick(s, idx, e)}
-                      title={`مقاس: ${s.name} | السعر: ${sPrice} ر.س | المتبقي: ${sStock} حبة | انقر لتثبيت هذا المقاس`}
-                      className={`relative group/size text-[10px] font-bold px-2 py-1 rounded-lg border transition-all flex items-center gap-1.5 cursor-pointer select-none ${
+                      title={`${s.name} | السعر: ${sPrice} ر.س | المتبقي: ${sStock} حبة`}
+                      className={`relative group/size text-[11px] font-bold px-2 py-1 rounded-lg border transition-all flex items-center gap-1.5 cursor-pointer select-none ${
                         isSelected
                           ? 'border-amber-500 bg-amber-500 text-slate-950 shadow-xs ring-2 ring-amber-400/40 scale-102'
                           : isHovered
@@ -308,7 +308,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                         <div className="font-bold text-amber-400">{s.name}</div>
                         <div className="text-[9px] text-slate-300">السعر: {sPrice} ر.س</div>
                         <div className="text-[9px] text-slate-400">المتوفر: {sStock} حبة</div>
-                        <div className="text-[8px] text-emerald-400 pt-0.5">انقر لتثبيت واختيار المقاس</div>
+                        <div className="text-[8px] text-emerald-400 pt-0.5">انقر للتثبيت والاختيار</div>
                         <div className="absolute top-full right-1/2 translate-x-1/2 border-4 border-transparent border-t-slate-950" />
                       </div>
                     </button>
@@ -339,7 +339,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             </span>
           ) : activeSize?.priceDelta ? (
             <span className="text-[9px] text-amber-700 block font-medium">
-              (حسب مقاس {activeSize.name})
+              ({activeSize.name})
             </span>
           ) : null}
         </div>
@@ -365,9 +365,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               : isMaxInCart
               ? `وصلت للحد الأقصى المتوفر بالسلة (${currentStock} قطع)`
               : selectedSize
-              ? `أضف مقاس (${selectedSize.name}) بصورته المحددة إلى السلة`
+              ? `أضف (${selectedSize.name}) بصورته وسعره المحدد إلى السلة`
               : hasDbSizes
-              ? `اختر المقاس (${availableSizesCount}) وأضف للسلة`
+              ? `اختر من (${availableSizesCount}) وأضف للسلة`
               : 'أضف إلى السلة'
           }
         >
@@ -384,7 +384,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               : selectedSize
               ? `أضف (${selectedSize.name})`
               : hasDbSizes
-              ? `اختيار المقاس (${availableSizesCount})`
+              ? `اختيار (${availableSizesCount})`
               : 'أضف'}
           </span>
           <span className="sm:hidden">
@@ -395,7 +395,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               : selectedSize
               ? `أضف (${selectedSize.name})`
               : hasDbSizes
-              ? `مقاس (${availableSizesCount})`
+              ? `(${availableSizesCount}) خيارات`
               : 'أضف'}
           </span>
         </button>
