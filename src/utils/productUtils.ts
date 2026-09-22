@@ -79,3 +79,23 @@ export function getAllProductImages(
 
   return list;
 }
+
+/**
+ * التحقق مما إذا كان المنتج متوفراً في المخزون
+ * في حال نفد المنتج (الكمية 0 أو أقل أو نفدت جميع مقاساته) يعتبر غير متوفر ولا يتم عرضه
+ */
+export function isProductInStock(product?: Product | null): boolean {
+  if (!product) return false;
+
+  // إذا كان للمنتج خيارات/مقاسات مسجلة
+  if (product.hasSizes && Array.isArray(product.sizes) && product.sizes.length > 0) {
+    // يعتبر متوفراً فقط إذا كان هناك خيار واحد على الأقل به مخزون متوفر أكبر من 0
+    return product.sizes.some((s) => {
+      const variantStock = typeof s.stock === 'number' ? s.stock : product.stock;
+      return typeof variantStock === 'number' && variantStock > 0;
+    });
+  }
+
+  // للمنتج العادي: توفر كمية المخزون أكبر من 0
+  return typeof product.stock === 'number' && product.stock > 0;
+}

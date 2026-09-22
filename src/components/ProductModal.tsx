@@ -81,6 +81,15 @@ export const ProductModal: React.FC<ProductModalProps> = ({
 
   const hasMultipleImages = imagesList.length > 1;
 
+  // تصفية الخيارات المتوفرة فقط في المخزون (استبعاد أي خيار أو مقاس نفد)
+  const availableSizes = useMemo(() => {
+    if (!product?.hasSizes || !Array.isArray(product?.sizes)) return [];
+    return product.sizes.filter((s) => {
+      const sStock = typeof s.stock === 'number' ? s.stock : product.stock;
+      return typeof sStock === 'number' && sStock > 0;
+    });
+  }, [product?.hasSizes, product?.sizes, product?.stock]);
+
   // الحجم الحالي الفعّال (إما معاينة بالوقوف أو المختار بالنقر)
   const activeSize = hoveredSize || selectedSize;
   const activeSizeIndex = hoveredSizeIndex ?? (selectedSize && product.sizes ? product.sizes.findIndex((s) => s.id === selectedSize.id || s.name === selectedSize.name) : 0);
@@ -315,13 +324,13 @@ export const ProductModal: React.FC<ProductModalProps> = ({
         )}
 
         {/* عرض المقاسات المتوفرة من قاعدة البيانات بعددها الحقيقي ومصغراتها وصورها */}
-        {product.hasSizes && product.sizes && product.sizes.length > 0 && (
+        {availableSizes.length > 0 && (
           <div className="space-y-2 pt-1">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                 <span>المقاسات والخيارات المتوفرة</span>
                 <span className="text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded-full font-black text-[11px] border border-amber-200">
-                  {product.sizes.length} خيارات متوفرة
+                  {availableSizes.length} خيارات متوفرة
                 </span>
               </label>
               {selectedSize && (
@@ -332,7 +341,7 @@ export const ProductModal: React.FC<ProductModalProps> = ({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-0.5">
-              {product.sizes.map((size, idx) => {
+              {availableSizes.map((size, idx) => {
                 const isSelected = selectedSize?.id === size.id || selectedSize?.name === size.name;
                 const isHovered = hoveredSize?.id === size.id || hoveredSize?.name === size.name;
                 const sizePrice = product.sell_price + (size.priceDelta || 0);

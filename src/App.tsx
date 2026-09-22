@@ -16,7 +16,7 @@ import ProductCard from './components/ProductCard';
 import ProductModal from './components/ProductModal';
 import CartDrawer from './components/CartDrawer';
 import OrderSuccessModal, { CompletedOrderData } from './components/OrderSuccessModal';
-import { getVariantImageUrl } from './utils/productUtils';
+import { getVariantImageUrl, isProductInStock } from './utils/productUtils';
 
 export default function App() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -142,25 +142,30 @@ export default function App() {
     };
   }, []);
 
-  // التصنيفات المتاحة
+  // تصفية المنتجات المتوفرة فقط في المخزون (في حال نفد المنتج لا يتم عرضه إطلاقاً)
+  const inStockProducts = useMemo(() => {
+    return products.filter((p) => isProductInStock(p));
+  }, [products]);
+
+  // التصنيفات المتاحة للمنتجات المتوفرة فقط
   const categories = useMemo(() => {
     const set = new Set<string>();
-    products.forEach((p) => {
+    inStockProducts.forEach((p) => {
       if (p.category) set.add(p.category);
     });
     return ['الكل', ...Array.from(set)];
-  }, [products]);
+  }, [inStockProducts]);
 
-  // المنتجات المفلترة
+  // المنتجات المفلترة المعروضة للزبائن (المتوفرة حصراً مع تطبيق البحث والتصنيف)
   const filteredProducts = useMemo(() => {
-    return products.filter((p) => {
+    return inStockProducts.filter((p) => {
       const matchCat = selectedCategory === 'الكل' || p.category === selectedCategory;
       const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
                           p.category.toLowerCase().includes(search.toLowerCase()) ||
                           (p.description && p.description.toLowerCase().includes(search.toLowerCase()));
       return matchCat && matchSearch;
     });
-  }, [products, selectedCategory, search]);
+  }, [inStockProducts, selectedCategory, search]);
 
   // إضافة منتج إلى السلة مع فحص دقيق للمخزون ومنع تجاوز الكمية المتوفرة
   const addToCart = (
@@ -229,11 +234,20 @@ export default function App() {
   };
 
   const handleOpenProductModal = (product: Product, initialSize?: ProductSizeVariant) => {
+    if (!isProductInStock(product)) {
+      setStockToast(`عذراً، منتج "${product.name}" نفد حالياً من المخزون.`);
+      return;
+    }
     setSelectedProduct(product);
-    if (initialSize) {
+    const inStockSizes = product.sizes?.filter((s) => {
+      const st = typeof s.stock === 'number' ? s.stock : product.stock;
+      return typeof st === 'number' && st > 0;
+    }) || [];
+
+    if (initialSize && inStockSizes.some((s) => s.id === initialSize.id || s.name === initialSize.name)) {
       setTempSelectedSize(initialSize);
-    } else if (product.sizes && product.sizes.length > 0) {
-      setTempSelectedSize(product.sizes[0]);
+    } else if (inStockSizes.length > 0) {
+      setTempSelectedSize(inStockSizes[0]);
     } else {
       setTempSelectedSize(null);
     }
@@ -304,6 +318,12 @@ export default function App() {
     if (cart.length === 0) return;
     if (!customerName.trim() || !customerPhone.trim()) {
       alert('يرجى ملء الاسم ورقم الجوال');
+      return;
+    }
+
+    const outOfStockItem = cart.find((item) => item.availableStock <= 0);
+    if (outOfStockItem) {
+      alert(`عذراً، المنتج "${outOfStockItem.name}" نفد من المخزون حالياً. يرجى حذفه لإتمام الطلب.`);
       return;
     }
 
@@ -380,7 +400,7 @@ export default function App() {
 
       {/* 2. بانر الترحيب والبحث */}
       <HeroBanner
-        productsCount={products.length}
+        productsCount={inStockProducts.length}
         search={search}
         onSearchChange={setSearch}
       />
@@ -445,7 +465,7 @@ export default function App() {
       </main>
 
       {/* 5. نافذة اختيار المقاس والتفاصيل */}
-      {selectedProduct && (
+      {selectedProduct && isProductInStock(selectedProduct) && (
         <ProductModal
           product={products.find((p) => p.id === selectedProduct.id) || selectedProduct}
           selectedSize={tempSelectedSize}

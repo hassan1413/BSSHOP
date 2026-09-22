@@ -38,8 +38,16 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     : 5;
   const isAtMinStock = currentStock > 0 && currentStock <= minStockThreshold;
 
-  // فحص توفر مقاسات مسجلة في قاعدة البيانات بعددها
-  const availableSizesCount = (product.hasSizes && Array.isArray(product.sizes)) ? product.sizes.length : 0;
+  // فحص وتصفية الخيارات المتوفرة فقط في المخزون (استبعاد أي مقاس/خيار نفد)
+  const availableSizes = useMemo(() => {
+    if (!product.hasSizes || !Array.isArray(product.sizes)) return [];
+    return product.sizes.filter((s) => {
+      const sStock = typeof s.stock === 'number' ? s.stock : product.stock;
+      return typeof sStock === 'number' && sStock > 0;
+    });
+  }, [product.hasSizes, product.sizes, product.stock]);
+
+  const availableSizesCount = availableSizes.length;
   const hasDbSizes = availableSizesCount > 0;
 
   // السعر الحالي استناداً للمقاس المختار أو المعاين
@@ -249,13 +257,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           </h3>
 
           {/* خيارات المقاسات التفاعلية: عند الوقوف أو الضغط تتغير الصورة فوراً مع صورة مصغرة وشارة توضيحية */}
-          {hasDbSizes && product.sizes && (
+          {hasDbSizes && (
             <div className="space-y-1 pt-1">
               <span className="text-[10px] text-slate-500 font-medium block">
                 الخيارات المتوفرة (قف أو اضغط لتبديل الصورة):
               </span>
               <div className="flex flex-wrap gap-1.5">
-                {product.sizes.map((s, idx) => {
+                {availableSizes.map((s, idx) => {
                   const isSelected = selectedSize?.id === s.id || (selectedSize?.name === s.name && !selectedSize?.id);
                   const isHovered = hoveredSize?.id === s.id || (hoveredSize?.name === s.name && !hoveredSize?.id);
                   const sImg = getVariantImageUrl(s, idx, imagesList, product.image_url);

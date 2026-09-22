@@ -120,7 +120,11 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
                   <div className="text-xs font-black text-slate-900 mt-1">
                     {item.price * item.quantity} <span className="text-[10px] font-normal text-slate-500">ر.س</span>
                   </div>
-                  {item.quantity >= item.availableStock && (
+                  {item.availableStock <= 0 ? (
+                    <div className="text-[9px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded inline-flex items-center gap-1 mt-1">
+                      <span>نفد من المخزون</span>
+                    </div>
+                  ) : item.quantity >= item.availableStock && (
                     <div className="text-[9px] font-bold text-amber-800 bg-amber-50 border border-amber-200/80 px-1.5 py-0.5 rounded inline-flex items-center gap-1 mt-1">
                       <span>الحد الأقصى للمخزون ({item.availableStock})</span>
                     </div>
